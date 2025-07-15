@@ -43,6 +43,17 @@
  * 
  * */
 
+//swsok, for mmap
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
+
+#define PAGE_SIZE (1<<12)
+#define PAGE_MASK (~(PAGE_SIZE-1))
+
 
 #include "bl_sgemm.h"
 
@@ -70,6 +81,10 @@ void computeError(
 
 }
 
+//swsok, for mmap on /dev/mem
+int fid = -1;
+off_t offset = 0x200000000LL;
+
 void test_bl_sgemm(
         int m,
         int n,
@@ -84,8 +99,20 @@ void test_bl_sgemm(
     int    lda, ldb, ldc, ldc_ref;
     float ref_rectime, bl_sgemm_rectime;
 
+    ssize_t local_offset = 0;
+    size_t size;
+
+    if ( fid > 0 ) {
+	size = (sizeof(float) * m * k + (PAGE_SIZE-1)) & PAGE_MASK;
+	A = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset);
+	local_offset += size;
+
+	size = (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK;
+	B = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
+    } else {
     A    = (float*)malloc( sizeof(float) * m * k );
     B    = (float*)malloc( sizeof(float) * k * n );
+    }
 
     lda = m;
     ldb = k;
@@ -182,8 +209,16 @@ void test_bl_sgemm(
     printf( "%5d\t %5d\t %5d\t %5.3lf\t %5.3lf\n", 
             m, n, k, flops / bl_sgemm_rectime, flops / ref_rectime );
 
-    free( A     );
-    free( B     );
+    if ( fid > 0 ) {
+	size = (sizeof(float) * m * k + (PAGE_SIZE-1)) & PAGE_MASK;
+	munmap(A, size);
+	size = (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK;
+	munmap(B, size);
+    } else { 
+	    free( A     );
+	    free( B     );
+    }
+
     free( C     );
     free( C_ref );
 }
@@ -191,21 +226,45 @@ void test_bl_sgemm(
 int main( int argc, char *argv[] )
 {
     int n = 800;
+    char *end;
+
     if (argc < 2) {
-	printf("Usage: %s [size, >= 16]\n", argv[0]);
+	printf("Usage: %s [size, >= 16] </dev/mem> <offset, default=0x200000000>\n", argv[0]);
 	return 0;
     }
 
-    n = atoi(argv[1]);
-    if ( n < 16 ) {
-	printf("size(%d) < 16. not valid.\n", n);
-	return 0;
+    if ( argc >= 2 ) {
+    	n = atoi(argv[1]);
+        if ( n < 16 ) {
+	    printf("size(%d) < 16. not valid.\n", n);
+	    return 0;
+	}
+    }
+
+    if ( argc >=3 ) {
+	fid = open(argv[2], O_RDWR);
+	if (fid < 0) {
+	    printf("%s is not opened\n", argv[2]);
+	    return 0;
+	}
+    }
+
+    if ( argc >=4 ) {
+	errno = 0;
+	offset = strtoull(argv[3], &end, 16);
+	if (errno != 0 ) {
+	    printf("%s is not valid for offset\n", argv[3]);
+	    goto out;
+	}
     }
     
     printf("%%m\t%%n\t%%k\t%%MY_GFLOPS\t%%REF_GFLOPS\n");
     for(int i = 16; i <= n; i += 4) {
         test_bl_sgemm( i, i, i );
     }
+
+out:
+    if ( fid > 0 ) close (fid);
 
     return 0;
 }

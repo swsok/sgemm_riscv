@@ -294,19 +294,22 @@ void test_bl_sgemm(
             m, n, k, flops / bl_sgemm_rectime, flops / ref_rectime );
 
     if ( fid > 0 ) {
-	    munmap(A, (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK);
-	    munmap(B, (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK);
-	    munmap(C, (ldc*( n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
+//	    munmap(A, (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK);
+//	    munmap(B, (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK);
+//	    munmap(C, (ldc*( n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
 	    munmap(packA, ((m + mr)*k*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
 	    munmap(packB, (k*2*(n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
 
     } else {
-    	free( A     );
+//    	free( A     );
     	free( packA );
-    	free( B     );
+//    	free( B     );
     	free( packB );
-    	free( C     );
+//    	free( C     );
     }
+    	free( A     );
+    	free( B     );
+    	free( C     );
     free( C_ref );
 }
 
