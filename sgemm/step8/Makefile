@@ -7,6 +7,7 @@ CCL := /home/zhaodongyu/toolchain/riscv/Xuantie-900-gcc-linux-5.10.4-glibc-x86_6
 CTOOL := riscv64-unknown-linux-gnu-
 CROSS_COMPILE := ${CCL}/bin/${CTOOL}
 
+CROSS_COMPILE := 
 CC  = $(CROSS_COMPILE)gcc
 CXX = $(CROSS_COMPILE)g++
 

@@ -43,10 +43,20 @@
  * 
  * */
 
+//swsok, for mmap
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include "bl_sgemm.h"
 
 #define ERROR_TEST
+
+#define PAGE_SIZE (1<<12)
+#define PAGE_MASK (~(PAGE_SIZE-1))
 
 #define TOLERANCE 1E-2
 void computeError(
@@ -91,6 +101,11 @@ void PackWeightLayout(float* dst, const float* src, int nc, int kc, int nr, bool
     }
 }
 
+//swsok, for mmap on /dev/mem
+int fid = -1;
+off_t offset = 0x200000000LL;
+//off_t offset = 0x0LL;
+
 void test_bl_sgemm(
         int m,
         int n,
@@ -104,24 +119,49 @@ void test_bl_sgemm(
     int    nrepeats;
     int    lda, ldb, ldc, ldc_ref;
     float ref_rectime, bl_sgemm_rectime;
+    ssize_t local_offset = 0;
+    size_t size;
+
+    float aaa = 0.0;
 
     int mr = 4;
     int nr = 4;
-    
-    A    = (float*)malloc( sizeof(float) * m * k *2);
-    B    = (float*)malloc( sizeof(float) * k * n );
-    // Allocate packing buffers
-    packA  = bl_malloc_aligned( m + mr, k, sizeof(float) );
-    packB  = bl_malloc_aligned( k*2, n + nr, sizeof(float) );
-
 
     lda = k;
     ldb = n;
     ldc     = n;
     ldc_ref = n;
-    C     = bl_malloc_aligned( ldc, n + nr, sizeof(float) );
-    C_ref = (float*)malloc( sizeof(float) * m * n );
 
+    //swsok, use /dev/mem as data storage   
+    if ( fid > 0 ) {
+	   size = (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK;
+	   A = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset);
+	   local_offset += size;
+
+	   size = (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK;
+	   B = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
+	   local_offset += size;
+
+	   size = (ldc*( n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
+	   C =  mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
+	   local_offset += size;
+
+	   size = ((m + mr)*k*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
+	   packA  = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
+	   local_offset += size;
+
+	   size = (k*2*(n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
+	   packB  = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
+    } else {
+    	A    = (float*)malloc( sizeof(float) * m * k *2);
+    	B    = (float*)malloc( sizeof(float) * k * n );
+    	// Allocate packing buffers
+    	packA  = bl_malloc_aligned( m + mr, k, sizeof(float) );
+    	packB  = bl_malloc_aligned( k*2, n + nr, sizeof(float) );
+    	C     = bl_malloc_aligned( ldc, n + nr, sizeof(float) );
+    }
+
+    C_ref = (float*)malloc( sizeof(float) * m * n );
     nrepeats = 1;
 
     srand48 (time(NULL));
@@ -250,20 +290,47 @@ void test_bl_sgemm(
     printf( "%5d\t %5d\t %5d\t %5.3lf\t %5.3lf\n", 
             m, n, k, flops / bl_sgemm_rectime, flops / ref_rectime );
 
-    free( A     );
-    free( packA );
-    free( B     );
-    free( packB );
-    free( C     );
+    if ( fid > 0 ) {
+	    munmap(A, (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK);
+	    munmap(B, (sizeof(float) * k * n + (PAGE_SIZE-1)) & PAGE_MASK);
+	    munmap(C, (ldc*( n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
+	    munmap(packA, ((m + mr)*k*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
+	    munmap(packB, (k*2*(n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK);
+
+    } else {
+    	free( A     );
+    	free( packA );
+    	free( B     );
+    	free( packB );
+    	free( C     );
+    }
     free( C_ref );
 }
 
 int main( int argc, char *argv[] )
 {
+    int max_matrix_row_and_column = 800;
+    printf("Usage: %s [max matrix row/column size. default=800] [/dev/mem]\n", argv[0]);
+
+    if ( argc >= 2 ) {
+	    max_matrix_row_and_column = atoi(argv[1]);
+    }
+
+    if ( argc >=3 ) {
+	fid = open(argv[2], O_RDWR);
+	if (fid < 0) {
+		printf("%s is not opened\n", argv[2]);
+		return 0;
+	}
+
+    }
+
     printf("%%m\t%%n\t%%k\t%%MY_GFLOPS\t%%REF_GFLOPS\n");
-    for(int i = 16; i <= 800; i += 4) {
+    for(int i = 16; i <= max_matrix_row_and_column; i += 4) {
         test_bl_sgemm( i, i, i );
     }
+
+    if ( fid > 0 ) close (fid);
 
     return 0;
 }
