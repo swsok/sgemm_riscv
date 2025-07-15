@@ -190,8 +190,20 @@ void test_bl_sgemm(
 
 int main( int argc, char *argv[] )
 {
+    int n = 800;
+    if (argc < 2) {
+	printf("Usage: %s [size, >= 16]\n", argv[0]);
+	return 0;
+    }
+
+    n = atoi(argv[1]);
+    if ( n < 16 ) {
+	printf("size(%d) < 16. not valid.\n", n);
+	return 0;
+    }
+    
     printf("%%m\t%%n\t%%k\t%%MY_GFLOPS\t%%REF_GFLOPS\n");
-    for(int i = 16; i <= 800; i += 4) {
+    for(int i = 16; i <= n; i += 4) {
         test_bl_sgemm( i, i, i );
     }
 

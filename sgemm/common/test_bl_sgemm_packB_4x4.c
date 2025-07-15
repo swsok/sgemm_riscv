@@ -104,7 +104,6 @@ void PackWeightLayout(float* dst, const float* src, int nc, int kc, int nr, bool
 //swsok, for mmap on /dev/mem
 int fid = -1;
 off_t offset = 0x200000000LL;
-//off_t offset = 0x0LL;
 
 void test_bl_sgemm(
         int m,
@@ -134,7 +133,7 @@ void test_bl_sgemm(
 
     //swsok, use /dev/mem as data storage   
     if ( fid > 0 ) {
-	   size = (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK;
+/*	   size = (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK;
 	   A = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset);
 	   local_offset += size;
 
@@ -145,7 +144,7 @@ void test_bl_sgemm(
 	   size = (ldc*( n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
 	   C =  mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
 	   local_offset += size;
-
+*/
 	   size = ((m + mr)*k*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
 	   packA  = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
 	   local_offset += size;
@@ -153,14 +152,18 @@ void test_bl_sgemm(
 	   size = (k*2*(n + nr)*sizeof(float) + (PAGE_SIZE-1)) & PAGE_MASK;
 	   packB  = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fid, offset + local_offset);
     } else {
-    	A    = (float*)malloc( sizeof(float) * m * k *2);
-    	B    = (float*)malloc( sizeof(float) * k * n );
+//    	A    = (float*)malloc( sizeof(float) * m * k *2);
+//    	B    = (float*)malloc( sizeof(float) * k * n );
     	// Allocate packing buffers
     	packA  = bl_malloc_aligned( m + mr, k, sizeof(float) );
     	packB  = bl_malloc_aligned( k*2, n + nr, sizeof(float) );
-    	C     = bl_malloc_aligned( ldc, n + nr, sizeof(float) );
+//    	C     = bl_malloc_aligned( ldc, n + nr, sizeof(float) );
     }
 
+    	A    = (float*)malloc( sizeof(float) * m * k *2);
+    	B    = (float*)malloc( sizeof(float) * k * n );
+    	C     = bl_malloc_aligned( ldc, n + nr, sizeof(float) );
+ 
     C_ref = (float*)malloc( sizeof(float) * m * n );
     nrepeats = 1;
 
@@ -310,7 +313,12 @@ void test_bl_sgemm(
 int main( int argc, char *argv[] )
 {
     int max_matrix_row_and_column = 800;
-    printf("Usage: %s [max matrix row/column size. default=800] [/dev/mem]\n", argv[0]);
+    char *end;
+
+    if ( argc < 2 ) {
+    	printf("Usage: %s [max matrix row/column size. default=800] [/dev/mem] <offset, default=0x200000000>\n", argv[0]);
+	return 0;
+    }
 
     if ( argc >= 2 ) {
 	    max_matrix_row_and_column = atoi(argv[1]);
@@ -324,12 +332,22 @@ int main( int argc, char *argv[] )
 	}
 
     }
+    if ( argc >=4 ) {
+        errno = 0;
+	offset = strtoull(argv[3], &end, 16);
+	if (errno != 0 ) {
+		printf("%s is not valid for offset\n", argv[3]);
+		goto out;
+	}
+    }
+
 
     printf("%%m\t%%n\t%%k\t%%MY_GFLOPS\t%%REF_GFLOPS\n");
     for(int i = 16; i <= max_matrix_row_and_column; i += 4) {
         test_bl_sgemm( i, i, i );
     }
 
+out:
     if ( fid > 0 ) close (fid);
 
     return 0;
