@@ -208,6 +208,7 @@ void test_bl_sgemm(
 
     printf( "%5d\t %5d\t %5d\t %5.3lf\t %5.3lf\n", 
             m, n, k, flops / bl_sgemm_rectime, flops / ref_rectime );
+    fflush(stdout);
 
     if ( fid > 0 ) {
 	size = (sizeof(float) * m * k + (PAGE_SIZE-1)) & PAGE_MASK;

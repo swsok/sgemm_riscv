@@ -292,6 +292,7 @@ void test_bl_sgemm(
     flops = ( m * n / ( 1000.0 * 1000.0 * 1000.0 ) ) * ( 2 * k );
     printf( "%5d\t %5d\t %5d\t %5.3lf\t %5.3lf\n", 
             m, n, k, flops / bl_sgemm_rectime, flops / ref_rectime );
+    fflush(stdout);
 
     if ( fid > 0 ) {
 //	    munmap(A, (sizeof(float) * m * k *2 + (PAGE_SIZE-1)) & PAGE_MASK);
